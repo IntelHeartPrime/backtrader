@@ -26,6 +26,11 @@ import os
 import os.path
 import sys
 
+
+# 从自定义模块导入
+import selfbuild_plot
+
+
 # append module root directory to sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -110,7 +115,7 @@ def runtest(datas,
 
                 cerebro.run()
                 if plot:
-                    cerebro.plot()
+                    cerebro.plot()   # TODO 改绘图函数 
 
                 cerebros.append(cerebro)
 

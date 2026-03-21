@@ -33,6 +33,10 @@ from .mt4csv import *
 from .pandafeed import *
 from .influxfeed import *
 try:
+    from .tushare import *
+except ImportError:
+    pass
+try:
     from .ibdata import *
 except ImportError:
     pass  # The user may not have ibpy installed
