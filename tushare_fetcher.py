@@ -104,9 +104,9 @@ def get_tushare_data(ts_code, start_date, end_date, token=None, adj=None):
 
     # Get token from parameter, env var, or .env file
     token = _get_tushare_token(token)
-
+    
     # Initialize Tushare API
-    pro = ts.pro_api(token)
+    pro = ts.pro_api(token, name='backtrader')
 
     # Fetch daily data
     df = pro.daily(

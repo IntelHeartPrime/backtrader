@@ -7,7 +7,7 @@ This example demonstrates how to:
 1. Fetch stock data from Tushare API
 2. Load it into backtrader using TushareData
 3. Run a simple moving average crossover strategy
-4. Plot results
+4. Automatically launch Streamlit visualization
 
 Requirements:
     pip install tushare backtrader[plotting]
@@ -20,6 +20,8 @@ Configuration:
 import backtrader as bt
 import sys
 import os
+import subprocess
+import webbrowser
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -28,7 +30,7 @@ from tushare_fetcher import get_tushare_data
 
 class SmaCrossStrategy(bt.Strategy):
     """
-Simple moving average crossover strategy
+    Simple moving average crossover strategy
 
     Buy when close price crosses above SMA
     Sell when close price crosses below SMA
@@ -54,12 +56,12 @@ Simple moving average crossover strategy
         elif order.status in [order.Completed]:
             if order.isbuy():
                 self.log(f'BUY EXECUTED, Price: {order.executed.price:.2f}, '
-                         f'Cost: {order.executed.value:.2f}, '
-                         f'Comm: {order.executed.comm:.2f}')
+                          f'Cost: {order.executed.value:.2f}, '
+                          f'Comm: {order.executed.comm:.2f}')
             else:
                 self.log(f'SELL EXECUTED, Price: {order.executed.price:.2f}, '
-                         f'Cost: {order.executed.value:.2f}, '
-                         f'Comm: {order.executed.comm:.2f}')
+                          f'Cost: {order.executed.value:.2f}, '
+                          f'Comm: {order.executed.comm:.2f}')
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.log(f'Order Canceled/Margin/Rejected')
 
@@ -79,8 +81,8 @@ Simple moving average crossover strategy
 
 def run_example():
     stock_code = '000001.SZ'
-    start_date = '20230101'
-    end_date = '20231231'
+    start_date = '2025-01-01'
+    end_date = '2025-12-31'
 
     print(f'Fetching data for {stock_code} from {start_date} to {end_date}...')
     print()
@@ -115,6 +117,10 @@ def run_example():
     cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe')
     cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
     cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
+    cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalyzer')
+    cerebro.add.addanalyzer(bt.analyzers.TimeReturn, timeframe=bt.TimeFrame.Days, _name='timereturn')
+    cerebro.addanalyzer(bt.analyzers.Transactions, _name='transactions')
+    cerebro.addanalyzer(bt.analyzers.PositionsValue, _name='positionsvalue')
 
     print('Starting backtest...')
     print(f'Starting Portfolio Value: {cerebro.broker.getvalue():.2f}')
@@ -137,12 +143,36 @@ def run_example():
     print(f'Max Drawdown: {drawdown.max.drawdown:.2f}%')
 
     returns = strat.analyzers.returns.get_analysis()
-    avg_return = returns.get('ravg100')
-    print(f'Average Return: {avg_return * 100:.2f}%' if avg_return is not None else 'Average Return: N/A')
+    avg_return = returns.get('rnorm100')
+    print(f'Average Return: {avg_return:.2f}%' if avg_return is not None else 'Average Return: N/A')
 
     print()
-    print('Plotting results...')
-    cerebro.plot(style='candlestick')
+    print('=' * 60)
+    print('✅ Backtest completed!')
+    print('🚀 Launching Streamlit visualization...')
+    print('=' * 60)
+    print()
+
+    try:
+        webbrowser.open('http://localhost:8501')
+        print('✅ Browser opened automatically')
+    except:
+        print('📋 Open http://localhost:8501 in your browser')
+    
+    print('💡 Press Ctrl+C to stop visualization server')
+    print()
+    
+    try:
+        subprocess.Popen([
+            sys.executable,
+            '-m', 'streamlit',
+            'run', 'app/main.py'
+        ])
+    except KeyboardInterrupt:
+        print('\n🛑 Visualization stopped.')
+    except Exception as e:
+        print(f'❌ Error launching visualization: {e}')
+        print('💡 You can manually run: streamlit run app/main.py')
 
 
 if __name__ == '__main__':
