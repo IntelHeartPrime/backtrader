@@ -1,6 +1,5 @@
 import pandas as pd
 import plotly.graph_objects as go
-from typing import Optional
 
 
 class EquityPresenter:
@@ -38,7 +37,7 @@ class EquityPresenter:
         fig.update_layout(
             title='Equity Curve',
             xaxis_title='Date',
-            yaxis_title='='Equity',
+            yaxis_title='Equity',
             template='plotly_dark',
             hovermode='x unified',
             margin=dict(l=0, r=0, t=30, b=0),
@@ -58,14 +57,19 @@ class EquityPresenter:
         Returns:
             Plotly Figure object
         """
-        if drawdown_df.empty:
+        if drawdown_df.empty or drawdown_df.shape[1] == 0:
             return go.Figure()
         
         fig = go.Figure()
         
+        y_series = (
+            drawdown_df['drawdown']
+            if 'drawdown' in drawdown_df.columns
+            else drawdown_df.iloc[:, 0]
+        )
         fig.add_trace(go.Scatter(
-            x=drawdown_df.index if 'verlot' in drawdown_df else list(range(len(drawdown_df))),
-            y=drawdown_df.get('verlot', drawdown_df.get('drawdown', [])),
+            x=drawdown_df.index,
+            y=y_series,
             mode='lines',
             name='Drawdown',
             line=dict(color='#FF4B4B', width=2),

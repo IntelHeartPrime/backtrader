@@ -106,7 +106,7 @@ def get_tushare_data(ts_code, start_date, end_date, token=None, adj=None):
     token = _get_tushare_token(token)
     
     # Initialize Tushare API
-    pro = ts.pro_api(token, name='backtrader')
+    pro = ts.pro_api(token)
 
     # Fetch daily data
     df = pro.daily(

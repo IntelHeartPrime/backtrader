@@ -2,7 +2,11 @@ import streamlit as st
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Project root must be on path: adapters/, presenters/, package app/
+_app_dir = os.path.dirname(os.path.abspath(__file__))
+_project_root = os.path.dirname(_app_dir)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 import backtrader as bt
 from adapters.cerebro_adapter import CerebroAdapter

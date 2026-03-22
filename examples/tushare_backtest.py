@@ -11,6 +11,8 @@ This example demonstrates how to:
 
 Requirements:
     pip install tushare backtrader[plotting]
+    pip install streamlit plotly
+    # or: pip install -r requirements.txt
 
 Configuration:
     Create .env file from .env.example and fill in your Tushare API token
@@ -18,14 +20,34 @@ Configuration:
 """
 
 import backtrader as bt
+import importlib.util
 import sys
 import os
+import socket
 import subprocess
+import time
 import webbrowser
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tushare_fetcher import get_tushare_data
+
+
+def _wait_local_port(port, process, timeout=45, host='127.0.0.1'):
+    """Wait until something accepts TCP connections on host:port or process exits."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if process.poll() is not None:
+            return False
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.settimeout(0.5)
+            if sock.connect_ex((host, port)) == 0:
+                return True
+        finally:
+            sock.close()
+        time.sleep(0.25)
+    return False
 
 
 class SmaCrossStrategy(bt.Strategy):
@@ -80,9 +102,11 @@ class SmaCrossStrategy(bt.Strategy):
 
 
 def run_example():
+    # Tushare daily API requires YYYYMMDD (see https://tushare.pro/document/2?doc_id=27)
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     stock_code = '000001.SZ'
-    start_date = '2025-01-01'
-    end_date = '2025-12-31'
+    start_date = '20250101'
+    end_date = '20251231'
 
     print(f'Fetching data for {stock_code} from {start_date} to {end_date}...')
     print()
@@ -118,7 +142,7 @@ def run_example():
     cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
     cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalyzer')
-    cerebro.add.addanalyzer(bt.analyzers.TimeReturn, timeframe=bt.TimeFrame.Days, _name='timereturn')
+    cerebro.addanalyzer(bt.analyzers.TimeReturn, timeframe=bt.TimeFrame.Days, _name='timereturn')
     cerebro.addanalyzer(bt.analyzers.Transactions, _name='transactions')
     cerebro.addanalyzer(bt.analyzers.PositionsValue, _name='positionsvalue')
 
@@ -153,26 +177,69 @@ def run_example():
     print('=' * 60)
     print()
 
+    if importlib.util.find_spec('streamlit') is None:
+        print('❌ 当前 Python 环境未安装 streamlit（与子进程使用的是同一解释器）。')
+        print(f'   解释器: {sys.executable}')
+        print('   请执行: python -m pip install streamlit plotly')
+        print('   或安装项目依赖: python -m pip install -r requirements.txt')
+        rel_main = os.path.join('app', 'main.py')
+        print(f'   安装后也可手动: streamlit run {rel_main}')
+        return
+
+    streamlit_app = os.path.join(project_root, 'app', 'main.py')
+    streamlit_url = 'http://localhost:8501'
     try:
-        webbrowser.open('http://localhost:8501')
-        print('✅ Browser opened automatically')
-    except:
-        print('📋 Open http://localhost:8501 in your browser')
-    
-    print('💡 Press Ctrl+C to stop visualization server')
-    print()
-    
-    try:
-        subprocess.Popen([
-            sys.executable,
-            '-m', 'streamlit',
-            'run', 'app/main.py'
-        ])
-    except KeyboardInterrupt:
-        print('\n🛑 Visualization stopped.')
+        proc = subprocess.Popen(
+            [sys.executable, '-m', 'streamlit', 'run', streamlit_app],
+            cwd=project_root,
+        )
     except Exception as e:
         print(f'❌ Error launching visualization: {e}')
-        print('💡 You can manually run: streamlit run app/main.py')
+        print('💡 Install: pip install streamlit plotly')
+        print(
+            f'💡 Or from project root: streamlit run {os.path.join("app", "main.py")}'
+        )
+        return
+
+    print('Waiting for Streamlit to listen on port 8501...')
+    if not _wait_local_port(8501, proc):
+        if proc.poll() is not None:
+            print(
+                '❌ Streamlit exited early (see traceback above). '
+                'Common causes: missing deps or import errors in app/main.py.'
+            )
+            print(
+                '   If you see "No module named streamlit", run:\n'
+                f'   {sys.executable} -m pip install streamlit plotly'
+            )
+        else:
+            print('❌ Timed out waiting for port 8501.')
+        rel_main = os.path.join('app', 'main.py')
+        print(f'💡 From project root: streamlit run {rel_main}')
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        return
+
+    try:
+        webbrowser.open(streamlit_url)
+        print(f'✅ Opened {streamlit_url} in your browser')
+    except OSError:
+        print(f'📋 Open {streamlit_url} in your browser manually')
+
+    print('💡 Press Ctrl+C here to stop the Streamlit server')
+    print()
+    try:
+        proc.wait()
+    except KeyboardInterrupt:
+        print('\n🛑 Stopping Streamlit...')
+        proc.terminate()
+        try:
+            proc.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            proc.kill()
 
 
 if __name__ == '__main__':
