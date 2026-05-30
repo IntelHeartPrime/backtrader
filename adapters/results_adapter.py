@@ -36,7 +36,9 @@ class ResultsAdapter:
         
         try:
             drawdown = self.strategy.analyzers.drawdown.get_analysis()
-            metrics['max_drawdown'] = drawdown.get('max', {}).get('drawdown', None)
+            raw_dd = drawdown.get('max', {}).get('drawdown', None)
+            # Normalize to ratio: analyzer returns e.g. -15.0 for -15%
+            metrics['max_drawdown'] = raw_dd / 100.0 if raw_dd is not None else None
         except:
             pass
         
@@ -59,25 +61,28 @@ class ResultsAdapter:
         
         return metrics
     
-    def get_equity_curve(self) -> pd.DataFrame:
+    def get_equity_curve(self, initial_cash: float = 100000.0) -> pd.DataFrame:
         """
         Extract equity curve from TimeReturn analyzer.
-        
+
+        Args:
+            initial_cash: Starting cash amount for dollar-denominated equity
+
         Returns:
-            DataFrame with datetime index and cumulative returns
+            DataFrame with datetime index and 'equity' column in dollar values
         """
         try:
             timereturn = self.strategy.analyzers.timereturn.get_analysis()
-            
+
             dates = []
             values = []
-            cumulative = 1.0
-            
+            cumulative = initial_cash
+
             for date, ret in sorted(timereturn.items()):
                 cumulative *= (1 + ret)
                 dates.append(date)
                 values.append(cumulative)
-            
+
             df = pd.DataFrame({'equity': values}, index=dates)
             df.index.name = 'date'
             return df
@@ -86,87 +91,120 @@ class ResultsAdapter:
     
     def get_drawdown_curve(self) -> pd.DataFrame:
         """
-        Extract drawdown over time.
-        
+        Compute drawdown curve from equity curve.
+
         Returns:
-            DataFrame with drawdown percentages
+            DataFrame with datetime index and 'drawdown' column (negative values)
         """
         try:
-            drawdown = self.strategy.analyzers.drawdown.get_analysis()
-            return pd.DataFrame([drawdown])
-        except:
-            return pd.DataFrame()
+            equity_df = self.get_equity_curve()
+            if equity_df.empty:
+                return pd.DataFrame(columns=['drawdown'])
+
+            running_max = equity_df['equity'].cummax()
+            drawdown = (equity_df['equity'] - running_max) / running_max
+
+            result = pd.DataFrame({'drawdown': drawdown}, index=equity_df.index)
+            result.index.name = 'date'
+            return result
+        except Exception:
+            return pd.DataFrame(columns=['drawdown'])
     
     def get_trade_log(self) -> pd.DataFrame:
         """
         Extract detailed trade records from Transactions analyzer.
-        
+
         Returns:
-            DataFrame with trade details (date, direction, price, value)
+            DataFrame with trade details (date, amount, price, value)
         """
         try:
             transactions = self.strategy.analyzers.transactions.get_analysis()
-            
+
             rows = []
-            for data_key, data_trans in transactions.items():
-                for date, trans_list in data_trans.items():
+            # Transactions analyzer returns: OrderedDict({datetime: [[amount, price, ...], ...]})
+            if isinstance(transactions, dict):
+                for date, trans_list in transactions.items():
                     for trans in trans_list:
+                        # Each trans is a list: [amount, price, size, '', value]
+                        if not isinstance(trans, (list, tuple)):
+                            continue
+                        amount = trans[0] if len(trans) > 0 else 0
+                        price = trans[1] if len(trans) > 1 else 0
+                        value = trans[4] if len(trans) > 4 else (trans[2] if len(trans) > 2 else 0)
                         rows.append({
                             'date': date,
-                            'data': data_key,
-                            'amount': trans.get(0, 0),
-                            'price': trans.get(1, 0),
-                            'value': trans.get(2, 0)
+                            'amount': amount,
+                            'price': price,
+                            'value': value,
                         })
-            
+
             return pd.DataFrame(rows)
-        except:
-            return pd.DataFrame(columns=['date', 'data', 'amount', 'price', 'value'])
+        except Exception:
+            return pd.DataFrame(columns=['date', 'amount', 'price', 'value'])
     
     def get_ohlcv_data(self) -> pd.DataFrame:
         """
         Extract OHLCV price data from strategy data feeds.
-        
+
+        After ``cerebro.run()``, the feed cursor is on the last bar: index ``0``
+        is the latest bar, ``-1`` the previous, etc. Positive indices are not
+        valid for walking history.
+
         Returns:
-            DataFrame with datetime, open, high, low, close, volume
+            DataFrame with datetime index and open, high, low, close, volume
         """
         try:
             data = self.strategy.data
+            n = len(data)
+            if n == 0:
+                return pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume'])
+
             dates = []
-            opens, highs, lows, closes, volumes = [], [], [], []
-            
-            for i in range(len(data)):
-                dates.append(data.datetime.date(i))
-                opens.append(data.open[i])
-                highs.append(data.high[i])
-                lows.append(data.low[i])
-                closes.append(data.close[i])
-                volumes.append(data.volume[i])
-            
-            df = pd.DataFrame({
-                'open': opens,
-                'high': highs,
-                'low': lows,
-                'close': closes,
-                'volume': volumes
-            }, index=dates)
+            opens, highs, lows, closes, volumes = [], [], [], [], []
+            for ago in range(-(n - 1), 1):
+                dates.append(data.datetime.date(ago))
+                opens.append(float(data.open[ago]))
+                highs.append(float(data.high[ago]))
+                lows.append(float(data.low[ago]))
+                closes.append(float(data.close[ago]))
+                volumes.append(float(data.volume[ago]))
+
+            df = pd.DataFrame(
+                {
+                    'open': opens,
+                    'high': highs,
+                    'low': lows,
+                    'close': closes,
+                    'volume': volumes,
+                },
+                index=dates,
+            )
             df.index.name = 'date'
             return df
-        except:
+        except Exception:
             return pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume'])
     
-    def get_trade_signals(self) -> List[Dict[str, Any]]:
+    def get_trade_signals(self) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Extract buy/sell signals for plotting markers.
-        
+        Extract buy/sell markers for the price chart (from Transactions analyzer).
+
         Returns:
-            List of {'date': datetime, 'type': 'buy'|'sell', 'price': float}
+            {'buys': [{'date', 'price'}, ...], 'sells': [...]}
         """
-        signals = []
-        
+        buys: List[Dict[str, Any]] = []
+        sells: List[Dict[str, Any]] = []
         try:
-            trades = self.strategy.analyzers.tradeanalyzer.get_analysis()
-        except:
-            return signals
-        
-        return signals
+            transactions = self.strategy.analyzers.transactions.get_analysis()
+            for _data_key, data_trans in transactions.items():
+                for date, trans_list in data_trans.items():
+                    for trans in trans_list:
+                        amount = trans.get(0, 0)
+                        price = float(trans.get(1, 0) or 0)
+                        row = {'date': date, 'price': price}
+                        if amount > 0:
+                            buys.append(row)
+                        elif amount < 0:
+                            sells.append(row)
+        except Exception:
+            pass
+        return {'buys': buys, 'sells': sells}

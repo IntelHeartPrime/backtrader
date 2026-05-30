@@ -23,7 +23,7 @@ class TradeLogPresenter:
         
         df = transactions_df.copy()
         
-        df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d %H:%M')
+        df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
         df['direction'] = df['amount'].apply(lambda x: 'Buy' if x > 0 else 'Sell')
         df['price'] = df['price'].round(2)
         df['amount'] = df['amount'].abs().astype(int)

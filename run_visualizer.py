@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Streamlit Visualizer - Launch backtrader visualization directly
+Streamlit Visualizer - Launch enhanced backtrader visualization
 
-This script bypasses Tushare API requirements and launches
-the Streamlit visualization with sample data.
+Features:
+- Single backtest mode
+- Batch backtest with parameter grid search
+- Equity curve comparison across strategies
+- Performance rankings
 """
 
 import sys
@@ -12,12 +15,19 @@ import os
 import subprocess
 import webbrowser
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-print('=' * 60)
-print('🚀 Backtrader Streamlit Visualizer')
-print('=' * 60)
+print('=' * 70)
+print('🚀 Backtrader Enhanced Visualization')
+print('=' * 70)
 print()
+print('Features:')
+print('  ✅ Single backtest with detailed metrics')
+print('  ✅ Batch backtest with parameter grid search')
+print('  ✅ Equity curve comparison across strategies')
+print('  ✅ Performance rankings')
+print()
+print('=' * 70)
 
 try:
     webbrowser.open('http://localhost:8501')
@@ -28,6 +38,7 @@ except:
 print()
 print('💡 Press Ctrl+C to stop visualization server')
 print()
+print('Starting Streamlit server...')
 
 try:
     subprocess.Popen([

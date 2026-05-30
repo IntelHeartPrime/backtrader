@@ -52,20 +52,34 @@ def _wait_local_port(port, process, timeout=45, host='127.0.0.1'):
 
 class SmaCrossStrategy(bt.Strategy):
     """
-    Simple moving average crossover strategy
+    Moving average crossover strategy — supports both single-SMA and dual-SMA modes.
 
-    Buy when close price crosses above SMA
-    Sell when close price crosses below SMA
+    Single-SMA mode (legacy):
+        Buy when close > SMA, sell when close < SMA.
+        Uses params: sma_period
+
+    Dual-SMA mode (used by batch grid search):
+        Buy when fast MA crosses above slow MA, sell on opposite cross.
+        Uses params: fast_period, slow_period
     """
 
     params = (
         ('sma_period', 20),
+        ('fast_period', None),
+        ('slow_period', None),
         ('print_log', True),
     )
 
     def __init__(self):
-        self.sma = bt.indicators.SMA(self.data.close, period=self.p.sma_period)
         self.close = self.data.close
+        if self.p.fast_period is not None and self.p.slow_period is not None:
+            self.fast_ma = bt.indicators.SMA(self.data.close, period=self.p.fast_period)
+            self.slow_ma = bt.indicators.SMA(self.data.close, period=self.p.slow_period)
+            self.crossover = bt.indicators.CrossOver(self.fast_ma, self.slow_ma)
+            self._dual_mode = True
+        else:
+            self.sma = bt.indicators.SMA(self.data.close, period=self.p.sma_period)
+            self._dual_mode = False
 
     def log(self, txt, dt=None):
         if self.p.print_log:
@@ -93,12 +107,18 @@ class SmaCrossStrategy(bt.Strategy):
         self.log(f'TRADE CLOSED, PnL: {trade.pnl:.2f}, PnL Net: {trade.pnlcomm:.2f}')
 
     def next(self):
-        if not self.position:
-            if self.close[0] > self.sma[0]:
+        if self._dual_mode:
+            if self.crossover > 0:
                 self.buy()
-        else:
-            if self.close[0] < self.sma[0]:
+            elif self.crossover < 0:
                 self.sell()
+        else:
+            if not self.position:
+                if self.close[0] > self.sma[0]:
+                    self.buy()
+            else:
+                if self.close[0] < self.sma[0]:
+                    self.sell()
 
 
 def run_example():

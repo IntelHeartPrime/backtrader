@@ -29,6 +29,11 @@ class CerebroAdapter:
     def set_commission(self, commission: float = 0.001):
         self.cerebro.broker.setcommission(commission=commission)
         return self
+
+    def set_sizer(self, percent: float = 95.0):
+        """Set position sizer to use a percentage of available cash per trade."""
+        self.cerebro.addsizer(bt.sizers.PercentSizer, percents=percent)
+        return self
     
     def add_standard_analyzers(self):
         """Add standard analyzers for KPI and visualization"""
